@@ -1,28 +1,25 @@
 var PromiseFactory = {
-    FilePromise: function (fileName) {
-        return require("./FilePromise.js").promise(fileName);
-    },
     Promise: function (promises) {
-
+        console.log(promises);
         return (new function () {
 
             var self = this;
             var _toDigest = [];
             var _busy = [];
-            var _digesting = false;
+            var _digesting = 0;
             var _args = {};
             promises = [].concat(promises);
+            _digesting = promises.length;
+
             function digest() {
-                if (!_digesting)
-                    _digesting = true;
                 var promise = promises.shift();
                 if (!promise) {
-                    if (_toDigest.length > 0) {
-                        promises = [].concat(_toDigest.shift());
-                        digest();
-                    }
-                    else {
-                        _digesting = false;
+                    if (_digesting == 0) {
+                        if (_toDigest.length > 0) {
+                            promises = [].concat(_toDigest.shift());
+                            _digesting = promises.length;
+                            digest();
+                        }
                     }
                 }
                 else if (promise.resolve) {
@@ -31,18 +28,45 @@ var PromiseFactory = {
                             for (var k in args)
                                 _args[k] = args[k];
                         }
+                        _digesting--;
                         digest();
-                    })
+                    });
+                    digest();
+                }
+                else if(promise.success)
+                {
+                    promise.success(function (args) {
+                        if (args) {
+                            for (var k in args)
+                                _args[k] = args[k];
+                        }
+                        _digesting--;
+                        digest();
+                    });
+                    digest();
+                }
+                else if (promise.complete) {
+                    promise.complete(function (args) {
+                        if (args) {
+                            for (var k in args)
+                                _args[k] = args[k];
+                        }
+                        _digesting--;
+                        digest();
+                    });
+                    digest();
                 }
                 else if (promise.call) {
                     var response = promise(_args);
                     if (response && (response.resolve || response.call)) {
                         promises.unshift(response);
+                        _digesting++;
                     }
                     else if (response instanceof Object) {
                         for (var k in response)
                             _args[k] = response[k];
                     }
+                    _digesting--;
                     digest();
                 }
             }
@@ -55,8 +79,7 @@ var PromiseFactory = {
             };
             this.then = function (callback) {
                 _toDigest.push([].concat(callback));
-                if (!_digesting)
-                    digest();
+                digest();
                 return self;
             }
 
